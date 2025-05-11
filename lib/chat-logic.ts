@@ -1,4 +1,8 @@
 import { mockProperties } from "./mock-data";
+import { GoogleGenerativeAI } from '@google/generative-ai';
+
+const genAI = new GoogleGenerativeAI("AIzaSyBAEJ4de54Z02ZOxBIwXYwoemidEElKcx4");
+const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
 interface ProcessResult {
   response: string;
@@ -15,10 +19,18 @@ interface ProcessResult {
 const SUPPORTED_CITIES = {
   'gurgaon': { name: 'Gurgaon', currency: 'INR', budgetUnit: 'Lakh' },
   'gurugram': { name: 'Gurgaon', currency: 'INR', budgetUnit: 'Lakh' },
+  'noida': { name: 'Noida', currency: 'INR', budgetUnit: 'Lakh' },
   'delhi': { name: 'Delhi', currency: 'INR', budgetUnit: 'Lakh' },
   'mumbai': { name: 'Mumbai', currency: 'INR', budgetUnit: 'Crore' },
+  'navi mumbai': { name: 'Navi Mumbai', currency: 'INR', budgetUnit: 'Crore' },
   'bangalore': { name: 'Bangalore', currency: 'INR', budgetUnit: 'Lakh' },
   'hyderabad': { name: 'Hyderabad', currency: 'INR', budgetUnit: 'Lakh' },
+  'pune': { name: 'Pune', currency: 'INR', budgetUnit: 'Lakh' },
+  'chennai': { name: 'Chennai', currency: 'INR', budgetUnit: 'Lakh' },
+  'ahmedabad': { name: 'Ahmedabad', currency: 'INR', budgetUnit: 'Lakh' },
+  'kolkata': { name: 'Kolkata', currency: 'INR', budgetUnit: 'Lakh' },
+  'jaipur': { name: 'Jaipur', currency: 'INR', budgetUnit: 'Lakh' },
+  'lucknow': { name: 'Lucknow', currency: 'INR', budgetUnit: 'Lakh' },
   'dubai': { name: 'Dubai', currency: 'AED', budgetUnit: 'Million' },
   'abudhabi': { name: 'Abu Dhabi', currency: 'AED', budgetUnit: 'Million' },
   'sharjah': { name: 'Sharjah', currency: 'AED', budgetUnit: 'Million' },
@@ -30,8 +42,38 @@ const PROPERTY_TYPES = {
   'villa': ['villa', 'house', 'bungalow', 'townhouse'],
   'plot': ['plot', 'land', 'empty land'],
   'penthouse': ['penthouse', 'duplex'],
-  'studio': ['studio', 'studio apartment']
+  'studio': ['studio', 'studio apartment'],
+  'commercial': ['office', 'shop', 'retail', 'business']
 };
+
+async function generateAIResponse(
+  input: string,
+  requirements: Record<string, string | number | undefined>,
+  stage: number,
+  missingFields?: string[],
+  hasRecommendations?: boolean
+): Promise<string> {
+  const prompt = `
+You are a smart real estate assistant.
+
+User said: "${input}"
+Current stage: ${stage}
+Known requirements: ${JSON.stringify(requirements)}
+Missing fields: ${missingFields?.join(", ") || "None"}
+Properties found: ${hasRecommendations ? "Yes" : "No"}
+
+Instructions:
+- Ask questions naturally if any fields are missing.
+- If everything is filled and properties exist, summarize and invite next steps.
+- If user is dissatisfied, suggest adjusting criteria.
+Respond naturally and professionally.
+`;
+
+
+  const result = await model.generateContent(prompt);
+  const response = result.response.text();
+  return response.trim();
+}
 
 
 interface Recommendation {
@@ -61,9 +103,8 @@ export async function processUserInput(
 
   const inputLower = input.toLowerCase();
 
-  // Stage 1: Extract basic information from initial input
+  // Stage 1 & 2: Extract details if not already present
   if (updatedStage <= 2) {
-    // Extract city from input if not already set
     if (!updatedRequirementMap.city) {
       for (const [cityKey, cityData] of Object.entries(SUPPORTED_CITIES)) {
         if (inputLower.includes(cityKey)) {
@@ -75,7 +116,6 @@ export async function processUserInput(
       }
     }
 
-    // Extract property type if not already set
     if (!updatedRequirementMap.type) {
       for (const [typeKey, typeSynonyms] of Object.entries(PROPERTY_TYPES)) {
         if (typeSynonyms.some(syn => inputLower.includes(syn))) {
@@ -85,7 +125,6 @@ export async function processUserInput(
       }
     }
 
-    // Extract bedrooms
     if (!updatedRequirementMap.bedrooms) {
       const bedroomMatch = inputLower.match(/(\d+)\s*(bhk|bed|bedroom|bedrooms)/);
       if (bedroomMatch) {
@@ -95,7 +134,6 @@ export async function processUserInput(
       }
     }
 
-    // Extract budget with currency awareness
     if (!updatedRequirementMap.budget) {
       const cityData = updatedRequirementMap.city 
         ? Object.values(SUPPORTED_CITIES).find(c => c.name.toLowerCase() === (typeof updatedRequirementMap.city === 'string' ? updatedRequirementMap.city.toLowerCase() : ''))
@@ -120,7 +158,6 @@ export async function processUserInput(
       }
     }
 
-    // Extract purpose
     if (!updatedRequirementMap.purpose) {
       if (inputLower.includes('personal') || inputLower.includes('live') || inputLower.includes('own use')) {
         updatedRequirementMap.purpose = 'Personal Use';
@@ -131,7 +168,6 @@ export async function processUserInput(
       }
     }
 
-    // Extract status
     if (!updatedRequirementMap.status) {
       if (inputLower.includes('ready') || inputLower.includes('move in')) {
         updatedRequirementMap.status = 'Ready to Move';
@@ -141,17 +177,15 @@ export async function processUserInput(
     }
   }
 
-  // Conversation flow based on stage
-  switch (currentStage) {
-    case 1: // Initial greeting and intent capture
+  // Evaluate current missing fields
+  missingFields = getMissingFieldsForStage2(updatedRequirementMap);
+
+  switch (updatedStage) {
+    case 1:
       if (Object.keys(updatedRequirementMap).length > 0) {
         updatedStage = 2;
-        response = "Great! I'd like to understand your requirements better. ";
-        missingFields = getMissingFieldsForStage2(updatedRequirementMap);
-        if (missingFields.length > 0) {
-          response += getMissingFieldsPrompt(missingFields, updatedRequirementMap);
-        } else {
-          response += "Let me find some properties for you.";
+        response = await generateAIResponse(input, updatedRequirementMap, updatedStage);
+        if (missingFields.length === 0) {
           updatedStage = 3;
           showRecommendations = true;
         }
@@ -165,18 +199,26 @@ export async function processUserInput(
       }
       break;
 
-    case 2: // Gather more detailed requirements
-      missingFields = getMissingFieldsForStage2(updatedRequirementMap);
-      if (missingFields.length === 0) {
-        updatedStage = 3;
-        response = "Based on your requirements, I've found some properties that might interest you. Take a look at these options.";
-        showRecommendations = true;
-      } else {
-        response = getMissingFieldsPrompt(missingFields, updatedRequirementMap);
-      }
+    case 2:
+      const possibleRecommendations = generateRecommendations(updatedRequirementMap);
+
+if (possibleRecommendations.length > 0) {
+  recommendations = possibleRecommendations;
+  showRecommendations = true;
+  updatedStage = 3;
+
+  if (missingFields.length > 0) {
+    response = `I’ve found some close matches even though a few details are still missing (${missingFields.join(', ')}). Take a look and let me know if you'd like to adjust.`;
+  } else {
+    response = "Based on your requirements, I've found some properties that might interest you. Take a look at these options.";
+  }
+} else {
+  response = await generateAIResponse(input, updatedRequirementMap, updatedStage, missingFields, false);
+}
+
       break;
 
-    case 3: // Recommendations and feedback
+    case 3:
       if (isPositiveResponse(inputLower)) {
         updatedStage = 4;
         response = "Great! Would you like to schedule a site visit or a call with our property expert to discuss further?";
@@ -187,7 +229,7 @@ export async function processUserInput(
           "Send me more options"
         ];
       } else if (isNegativeResponse(inputLower)) {
-        updatedStage = 5; // Objection handling
+        updatedStage = 5;
         response = "I understand. What specifically didn't work for you? You can mention location, price, property type, or other preferences.";
         quickReplies = [
           "Location not ideal",
@@ -209,12 +251,10 @@ export async function processUserInput(
           "Start over"
         ];
       }
-      
-      // Always show recommendations at this stage
       showRecommendations = true;
       break;
 
-    case 4: // Scheduling
+    case 4:
       if (isSchedulingRequest(inputLower)) {
         updatedStage = 6;
         response = "Perfect! How would you like to schedule?";
@@ -230,8 +270,7 @@ export async function processUserInput(
       }
       break;
 
-    case 5: // Objection handling
-      // Update requirements based on feedback
+    case 5:
       if (inputLower.includes('location') || inputLower.includes('area')) {
         response = "I'll adjust the location preferences. What area would you prefer instead?";
         delete updatedRequirementMap.city;
@@ -244,12 +283,11 @@ export async function processUserInput(
       } else {
         response = "I'll adjust my search based on your feedback. Let me find some better options for you.";
       }
-      
-      updatedStage = 3; // Go back to recommendations
+      updatedStage = 3;
       showRecommendations = true;
       break;
 
-    case 6: // Summary and follow-up
+    case 6:
       updatedStage = 7;
       response = "Thank you for your interest! I've noted down your preferences. Would you like me to send a summary of these properties to your email or WhatsApp?";
       quickReplies = [
@@ -259,11 +297,10 @@ export async function processUserInput(
       ];
       break;
 
-    default: // Final stage
+    default:
       response = "Thank you for using our service! We'll keep tracking better options based on your preferences and alert you if prices change. Feel free to reach out if you have more questions.";
   }
 
-  // Generate recommendations if needed
   if (showRecommendations) {
     recommendations = generateRecommendations(updatedRequirementMap);
     if (recommendations.length === 0) {
@@ -287,6 +324,7 @@ export async function processUserInput(
     recommendations
   };
 }
+
 
 // Helper functions
 function isPositiveResponse(input: string): boolean {
@@ -348,39 +386,55 @@ function getPropertyDetails(requirements: Requirements): string {
 }
 
 function generateRecommendations(requirements: Requirements): Recommendation[] {
-  // Filter properties based on requirements
-  return mockProperties.map(property => ({
-    ...property,
-    id: property.id.toString()
-  })).filter(property => {
-    // Match city if specified
-    if (requirements.city && !property.location.toLowerCase().includes(requirements.city.toLowerCase())) {
-      return false;
+  const exactMatches: Recommendation[] = [];
+  const scoredMatches: { score: number; recommendation: Recommendation }[] = [];
+
+  for (const property of mockProperties) {
+    let score = 0;
+    let isExact = true;
+
+    if (requirements.city) {
+      const cityMatch = property.location.toLowerCase().includes(requirements.city.toLowerCase());
+      if (cityMatch) score += 2;
+      else isExact = false;
     }
-    
-    // Match type if specified
-    if (requirements.type && property.type !== requirements.type) {
-      return false;
+
+    if (requirements.type) {
+      if (property.type === requirements.type) score += 2;
+      else isExact = false;
     }
-    
-    // Match bedrooms if specified
-    if (requirements.bedrooms && property.bedrooms !== requirements.bedrooms) {
-      return false;
+
+    if (requirements.bedrooms) {
+      if (property.bedrooms === requirements.bedrooms) score += 1.5;
+      else isExact = false;
     }
-    
-    // Match status if specified
-    if (requirements.status && property.status !== requirements.status) {
-      return false;
+
+    if (requirements.status) {
+      if (property.status === requirements.status) score += 1;
+      else isExact = false;
     }
-    
-    // Match budget if specified (within 20% range)
+
     if (requirements.budget) {
       const budgetDiff = Math.abs(property.price - requirements.budget);
-      if (budgetDiff > (0.2 * requirements.budget)) {
-        return false;
-      }
+      if (budgetDiff <= 0.2 * requirements.budget) score += 2;
+      else if (budgetDiff <= 0.3 * requirements.budget) score += 1;
+      else isExact = false;
     }
-    
-    return true;
-  }).slice(0, 5); // Return max 5 recommendations
+
+    const recommendation = { ...property, id: property.id.toString() };
+
+    if (isExact) {
+      exactMatches.push(recommendation);
+    } else {
+      scoredMatches.push({ score, recommendation });
+    }
+  }
+
+  if (exactMatches.length > 0) {
+    return exactMatches.slice(0, 5);
+  }
+
+  // Sort close matches by score descending and return top 5
+  scoredMatches.sort((a, b) => b.score - a.score);
+  return scoredMatches.map(item => item.recommendation).slice(0, 5);
 }

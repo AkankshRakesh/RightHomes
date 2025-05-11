@@ -6,14 +6,15 @@ interface ChatMessageProps {
 }
 
 export default function ChatMessage({ role, content }: ChatMessageProps) {
-  const isUser = role === "user"
-
   return (
-    <div className={cn("flex", isUser ? "justify-end" : "justify-start")}>
+    <div className={cn("flex w-full", role === "user" ? "justify-end" : "justify-start")}>
       <div
-        className={cn("max-w-[80%] rounded-lg p-3", isUser ? "bg-blue-500 text-white" : "bg-gray-100 text-gray-800")}
+        className={cn(
+          "max-w-[80%] rounded-lg p-4",
+          role === "user" ? "bg-teal-600 text-white" : "bg-gray-100 text-gray-800 border border-gray-200",
+        )}
       >
-        <p className="whitespace-pre-wrap">{content}</p>
+        <p className="text-sm whitespace-pre-wrap">{content}</p>
       </div>
     </div>
   )

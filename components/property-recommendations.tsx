@@ -1,24 +1,25 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { ChevronLeft, ChevronRight, Info, Calendar, MessageSquare } from "lucide-react"
+import { ChevronLeft, ChevronRight, Info, Calendar, MessageSquare, Heart, Share2 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { formatPrice } from "../lib/utils"
 import Image from "next/image"
+import { cn } from "@/lib/utils"
 
 interface Property {
-  properties: Array<Property>
-  name: string;
-  location: string;
-  price: number;
-  type: string;
-  size: number;
-  bedrooms: number;
-  features: string[];
-  status: string;
-  image?: string;
+  name: string
+  location: string
+  price: number
+  type: string
+  size: number
+  bedrooms: number
+  features: string[]
+  status: string
+  image?: string
+  priceUnit: string
 }
 
 interface PropertyRecommendationsProps {
@@ -27,22 +28,45 @@ interface PropertyRecommendationsProps {
 
 export default function PropertyRecommendations({ properties }: PropertyRecommendationsProps) {
   const [activeIndex, setActiveIndex] = useState(0)
+  const [liked, setLiked] = useState<boolean[]>([])
+  const [isAnimating, setIsAnimating] = useState(false)
+
+  // Initialize liked state based on properties length
+  useEffect(() => {
+    setLiked(new Array(properties.length).fill(false))
+  }, [properties.length])
 
   const nextProperty = () => {
+    if (isAnimating) return
+    setIsAnimating(true)
     setActiveIndex((prev) => (prev + 1) % properties.length)
+    setTimeout(() => setIsAnimating(false), 300)
   }
 
   const prevProperty = () => {
+    if (isAnimating) return
+    setIsAnimating(true)
     setActiveIndex((prev) => (prev - 1 + properties.length) % properties.length)
+    setTimeout(() => setIsAnimating(false), 300)
+  }
+
+  const toggleLike = (index: number) => {
+    const newLiked = [...liked]
+    newLiked[index] = !newLiked[index]
+    setLiked(newLiked)
   }
 
   if (properties.length === 0) {
     return (
-      <Card className="mb-6">
+      <Card className="mb-6 border-gray-200 shadow-sm">
         <CardContent className="pt-6">
-          <p className="text-center text-gray-500">
-            No properties match your criteria. Try adjusting your preferences.
-          </p>
+          <div className="flex flex-col items-center justify-center py-8 text-center">
+            <div className="rounded-full bg-gray-100 p-3 mb-3">
+              <Info className="h-6 w-6 text-gray-400" />
+            </div>
+            <p className="text-gray-500 mb-2">No properties match your criteria.</p>
+            <p className="text-sm text-gray-400">Try adjusting your preferences or explore more areas.</p>
+          </div>
         </CardContent>
       </Card>
     )
@@ -52,20 +76,58 @@ export default function PropertyRecommendations({ properties }: PropertyRecommen
 
   return (
     <div className="space-y-4 mb-6">
-      <h2 className="text-xl font-bold">Recommended Properties</h2>
+      <div className="flex justify-between items-center">
+        <h2 className="text-xl font-bold text-gray-800">Recommended Properties</h2>
+        <div className="text-sm text-gray-500">{properties.length} properties found</div>
+      </div>
 
-      <Card className="overflow-hidden">
-        <div className="relative h-48 bg-gray-200">
-          <Image
-            src={property.image || `/placeholder.svg?height=300&width=600`}
-            alt={property.name}
-            layout="fill"
-            objectFit="cover"
-          />
-          <div className="absolute top-2 right-2">
-            <Badge variant="secondary" className="bg-white text-black">
+      <Card className="overflow-hidden border-gray-200 shadow-sm hover:shadow-md transition-shadow duration-300">
+        <div className="relative w-full aspect-[3/2] min-h-[200px] max-h-[300px] overflow-hidden bg-gray-100">
+          <div
+            className={cn(
+              "absolute inset-0 transition-opacity duration-300",
+              isAnimating ? "opacity-50" : "opacity-100",
+            )}
+          >
+            <Image
+              src={property.image || "/placeholder-large.jpg"}
+              alt={property.name}
+              fill
+              style={{ objectFit: "cover" }}
+              quality={90}
+              sizes="(max-width: 768px) 100vw, 600px"
+              priority
+              className="transition-transform duration-300 hover:scale-105"
+            />
+          </div>
+
+          <div className="absolute top-0 left-0 right-0 p-3 flex justify-between items-start">
+            <Badge variant="secondary" className="bg-teal-600 text-white border-none">
               {property.status}
             </Badge>
+
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-8 w-8 rounded-full bg-white/90 hover:bg-white border-none"
+                onClick={() => toggleLike(activeIndex)}
+              >
+                <Heart
+                  className={cn(
+                    "h-4 w-4 transition-colors",
+                    liked[activeIndex] ? "fill-red-500 text-red-500" : "text-gray-600",
+                  )}
+                />
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-8 w-8 rounded-full bg-white/90 hover:bg-white border-none"
+              >
+                <Share2 className="h-4 w-4 text-gray-600" />
+              </Button>
+            </div>
           </div>
 
           {properties.length > 1 && (
@@ -73,7 +135,7 @@ export default function PropertyRecommendations({ properties }: PropertyRecommen
               <Button
                 variant="ghost"
                 size="icon"
-                className="absolute left-2 top-1/2 -translate-y-1/2 bg-white/80 hover:bg-white"
+                className="absolute left-2 top-1/2 -translate-y-1/2 bg-white/90 hover:bg-white text-gray-800 h-8 w-8 rounded-full shadow-sm"
                 onClick={prevProperty}
               >
                 <ChevronLeft className="h-4 w-4" />
@@ -81,64 +143,122 @@ export default function PropertyRecommendations({ properties }: PropertyRecommen
               <Button
                 variant="ghost"
                 size="icon"
-                className="absolute right-2 top-1/2 -translate-y-1/2 bg-white/80 hover:bg-white"
+                className="absolute right-2 top-1/2 -translate-y-1/2 bg-white/90 hover:bg-white text-gray-800 h-8 w-8 rounded-full shadow-sm"
                 onClick={nextProperty}
               >
                 <ChevronRight className="h-4 w-4" />
               </Button>
-              <div className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-black/60 text-white px-2 py-1 rounded-full text-xs">
-                {activeIndex + 1} / {properties.length}
+
+              <div className="absolute bottom-3 left-0 right-0 flex justify-center gap-1.5">
+                {properties.map((_, index) => (
+                  <button
+                    key={index}
+                    onClick={() => {
+                      setIsAnimating(true)
+                      setActiveIndex(index)
+                      setTimeout(() => setIsAnimating(false), 300)
+                    }}
+                    className={cn(
+                      "w-2 h-2 rounded-full transition-all duration-300",
+                      index === activeIndex ? "bg-white w-6" : "bg-white/50 hover:bg-white/80",
+                    )}
+                    aria-label={`View property ${index + 1}`}
+                  />
+                ))}
               </div>
             </>
           )}
         </div>
 
-        <CardHeader className="pb-2">
+        <CardHeader className="pb-2 pt-4">
           <CardTitle className="flex justify-between items-start">
             <div>
-              <h3 className="text-lg font-bold">{property.name}</h3>
-              <p className="text-sm text-gray-500">{property.location}</p>
+              <h3 className="text-lg font-bold text-gray-800">{property.name}</h3>
+              <p className="text-sm text-gray-500 flex items-center">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-4 w-4 mr-1 text-teal-600"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
+                  />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"
+                  />
+                </svg>
+                {property.location}
+              </p>
             </div>
-            <div className="text-lg font-bold text-blue-600">{formatPrice(property.price)}</div>
+            <div className="text-lg font-bold text-teal-600">
+              {formatPrice(property.price)} {property.priceUnit}
+            </div>
           </CardTitle>
         </CardHeader>
 
         <CardContent className="pb-2">
           <div className="grid grid-cols-3 gap-2 mb-4">
-            <div className="text-center p-2 bg-gray-50 rounded">
-              <p className="text-xs text-gray-500">Type</p>
-              <p className="font-medium">{property.type}</p>
+            <div className="text-center p-2 bg-gray-50 rounded-lg border border-gray-100">
+              <p className="text-xs text-gray-500 mb-1">Type</p>
+              <p className="font-medium text-gray-800">{property.type}</p>
             </div>
-            <div className="text-center p-2 bg-gray-50 rounded">
-              <p className="text-xs text-gray-500">Size</p>
-              <p className="font-medium">{property.size} sq.ft</p>
+            <div className="text-center p-2 bg-gray-50 rounded-lg border border-gray-100">
+              <p className="text-xs text-gray-500 mb-1">Size</p>
+              <p className="font-medium text-gray-800">{property.size} sq.ft</p>
             </div>
-            <div className="text-center p-2 bg-gray-50 rounded">
-              <p className="text-xs text-gray-500">Bedrooms</p>
-              <p className="font-medium">{property.bedrooms} BHK</p>
+            <div className="text-center p-2 bg-gray-50 rounded-lg border border-gray-100">
+              <p className="text-xs text-gray-500 mb-1">Bedrooms</p>
+              <p className="font-medium text-gray-800">{property.bedrooms} BHK</p>
             </div>
           </div>
 
-          <div className="space-y-1">
-            <p className="text-sm font-medium">Key Features:</p>
-            <ul className="text-sm text-gray-600 pl-5 list-disc">
+          <div className="space-y-2">
+            <p className="text-sm font-medium text-gray-800">Key Features:</p>
+            <div className="flex flex-wrap gap-2">
               {property.features.slice(0, 3).map((feature: string, index: number) => (
-                <li key={index}>{feature}</li>
+                <Badge key={index} variant="outline" className="bg-teal-50 text-teal-700 border-teal-200 font-normal">
+                  {feature}
+                </Badge>
               ))}
-            </ul>
+              {property.features.length > 3 && (
+                <Badge variant="outline" className="bg-gray-50 text-gray-600 border-gray-200 font-normal">
+                  +{property.features.length - 3} more
+                </Badge>
+              )}
+            </div>
           </div>
         </CardContent>
 
-        <CardFooter className="flex justify-between gap-2 pt-2">
-          <Button variant="outline" className="flex-1" size="sm">
+        <CardFooter className="flex flex-col sm:flex-row justify-between gap-2 pt-2 pb-4">
+          <Button
+            variant="outline"
+            className="flex-1 border-gray-200 hover:bg-gray-50 hover:text-teal-700 hover:border-teal-200 transition-colors"
+            size="sm"
+          >
             <Info className="h-4 w-4 mr-2" />
             Know More
           </Button>
-          <Button variant="outline" className="flex-1" size="sm">
+          <Button
+            variant="outline"
+            className="flex-1 border-gray-200 hover:bg-gray-50 hover:text-teal-700 hover:border-teal-200 transition-colors"
+            size="sm"
+          >
             <MessageSquare className="h-4 w-4 mr-2" />
             WhatsApp
           </Button>
-          <Button variant="default" className="flex-1" size="sm">
+          <Button
+            variant="default"
+            className="flex-1 bg-teal-600 hover:bg-teal-700 text-white transition-colors"
+            size="sm"
+          >
             <Calendar className="h-4 w-4 mr-2" />
             Schedule Visit
           </Button>
