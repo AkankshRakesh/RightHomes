@@ -4,14 +4,6 @@
 
 import type React from "react"
 
-// Extend the Window interface to include SpeechRecognition
-declare global {
-  interface Window {
-    SpeechRecognition: any;
-    webkitSpeechRecognition: any;
-  }
-}
-
 import { useState } from "react"
 import { Mic, MicOff, Send } from "lucide-react"
 import PropertyRecommendations from "../components/property-recommendations"
@@ -34,8 +26,36 @@ export default function Home() {
   ])
   const [input, setInput] = useState("")
   const [isListening, setIsListening] = useState(false)
-  const [requirementMap, setRequirementMap] = useState<Record<string, any>>({})
-  const [recommendations, setRecommendations] = useState<Array<any>>([])
+  interface RequirementMap {
+    city?: string;
+    budget?: number;
+    bedrooms?: number;
+    [key: string]: string | number | undefined; // Add index signature
+  }
+
+  const [requirementMap, setRequirementMap] = useState<RequirementMap>({})
+  interface Property {
+    name: string
+  location: string
+  price: number
+  type: string
+  size: number
+  bedrooms: number
+  features: string[]
+  status: string
+  image?: string
+  priceUnit: string
+  moreDetails: {
+      description: string;
+      amenities: string[];
+      floorPlans?: string[];
+      contact: string;
+      reraId: string;
+      possessionDate: string;
+    }
+  }
+
+  const [recommendations, setRecommendations] = useState<Array<Property>>([])
   const [showSchedule, setShowSchedule] = useState(false)
   const [stage, setStage] = useState(1)
 
@@ -98,7 +118,7 @@ export default function Home() {
           setIsListening(true)
         }
 
-        recognition.onresult = (event: any) => {
+        recognition.onresult = (event: SpeechRecognitionEvent) => {
           const transcript = event.results[0][0].transcript
           setInput(transcript)
         }
