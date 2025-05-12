@@ -98,82 +98,120 @@ export async function processUserInput(
   let missingFields: string[] = [];
   let response = "";
   let quickReplies: string[] = [];
-
   let recommendations: Recommendation[] = [];
 
   const inputLower = input.toLowerCase();
 
-  // Stage 1 & 2: Extract details if not already present
-  if (updatedStage <= 2) {
-    if (!updatedRequirementMap.city) {
-      for (const [cityKey, cityData] of Object.entries(SUPPORTED_CITIES)) {
-        if (inputLower.includes(cityKey)) {
-          updatedRequirementMap.city = cityData.name;
-          updatedRequirementMap.currency = cityData.currency;
-          updatedRequirementMap.budgetUnit = cityData.budgetUnit;
-          break;
+  // First check if user wants to update any existing requirements
+  const updatePatterns = {
+    city: /(change|update|different)\s*(city|location|area)/,
+    budget: /(change|update|different)\s*(budget|price|amount)/,
+    type: /(change|update|different)\s*(type|kind|property)/,
+    bedrooms: /(change|update|different)\s*(bedrooms|bhk|bed|size)/,
+    purpose: /(change|update|different)\s*(purpose|use|reason)/,
+    status: /(change|update|different)\s*(status|timing|ready|construction)/
+  };
+
+  // Check for update requests
+  for (const [field, pattern] of Object.entries(updatePatterns)) {
+    if (pattern.test(inputLower)) {
+      delete updatedRequirementMap[field];
+      response = `I'll update the ${field} preference. `;
+      break;
+    }
+  }
+
+  // Special case for "start over" or "reset"
+  if (inputLower.includes('start over') || inputLower.includes('reset')) {
+    Object.keys(updatedRequirementMap).forEach(key => delete updatedRequirementMap[key]);
+    updatedStage = 1;
+    response = "Okay, let's start fresh. Which city are you interested in?";
+    quickReplies = [
+      "Gurgaon properties",
+      "Mumbai apartments",
+      "Dubai villas"
+    ];
+    return {
+      response,
+      updatedRequirementMap,
+      updatedStage,
+      showRecommendations,
+      showScheduleOptions,
+      missingFields,
+      quickReplies,
+      recommendations
+    };
+  }
+
+  // Extract/update requirements if not already present or being updated
+  if (!updatedRequirementMap.city || inputLower.includes('location')) {
+    for (const [cityKey, cityData] of Object.entries(SUPPORTED_CITIES)) {
+      if (inputLower.includes(cityKey)) {
+        updatedRequirementMap.city = cityData.name;
+        updatedRequirementMap.currency = cityData.currency;
+        updatedRequirementMap.budgetUnit = cityData.budgetUnit;
+        break;
+      }
+    }
+  }
+
+  if (!updatedRequirementMap.type || inputLower.includes('type')) {
+    for (const [typeKey, typeSynonyms] of Object.entries(PROPERTY_TYPES)) {
+      if (typeSynonyms.some(syn => inputLower.includes(syn))) {
+        updatedRequirementMap.type = typeKey;
+        break;
+      }
+    }
+  }
+
+  if (!updatedRequirementMap.bedrooms || inputLower.includes('bedroom')) {
+    const bedroomMatch = inputLower.match(/(\d+)\s*(bhk|bed|bedroom|bedrooms)/);
+    if (bedroomMatch) {
+      updatedRequirementMap.bedrooms = parseInt(bedroomMatch[1]);
+    } else if (inputLower.includes('studio')) {
+      updatedRequirementMap.bedrooms = 'studio';
+    }
+  }
+
+  if (!updatedRequirementMap.budget || inputLower.includes('budget')) {
+    const cityData = updatedRequirementMap.city 
+      ? Object.values(SUPPORTED_CITIES).find(c => c.name.toLowerCase() === (typeof updatedRequirementMap.city === 'string' ? updatedRequirementMap.city.toLowerCase() : ''))
+      : null;
+
+    if (cityData) {
+      const budgetRegex = new RegExp(`(\\d+(?:\\.\\d+)?)\\s*(${cityData.budgetUnit.toLowerCase()}|${cityData.currency.toLowerCase()})`, 'i');
+      const budgetMatch = input.match(budgetRegex);
+      
+      if (budgetMatch) {
+        const budgetValue = parseFloat(budgetMatch[1]);
+        if (cityData.budgetUnit === 'Lakh') {
+          updatedRequirementMap.budget = budgetValue * 100000;
+        } else if (cityData.budgetUnit === 'Crore') {
+          updatedRequirementMap.budget = budgetValue * 10000000;
+        } else if (cityData.budgetUnit === 'Million') {
+          updatedRequirementMap.budget = budgetValue * 1000000;
+        } else {
+          updatedRequirementMap.budget = budgetValue;
         }
       }
     }
+  }
 
-    if (!updatedRequirementMap.type) {
-      for (const [typeKey, typeSynonyms] of Object.entries(PROPERTY_TYPES)) {
-        if (typeSynonyms.some(syn => inputLower.includes(syn))) {
-          updatedRequirementMap.type = typeKey;
-          break;
-        }
-      }
+  if (!updatedRequirementMap.purpose || inputLower.includes('purpose')) {
+    if (inputLower.includes('personal') || inputLower.includes('live') || inputLower.includes('own use')) {
+      updatedRequirementMap.purpose = 'Personal Use';
+    } else if (inputLower.includes('invest') || inputLower.includes('rental') || inputLower.includes('return')) {
+      updatedRequirementMap.purpose = 'Investment';
+    } else if (inputLower.includes('commercial') || inputLower.includes('office') || inputLower.includes('business')) {
+      updatedRequirementMap.purpose = 'Commercial';
     }
+  }
 
-    if (!updatedRequirementMap.bedrooms) {
-      const bedroomMatch = inputLower.match(/(\d+)\s*(bhk|bed|bedroom|bedrooms)/);
-      if (bedroomMatch) {
-        updatedRequirementMap.bedrooms = parseInt(bedroomMatch[1]);
-      } else if (inputLower.includes('studio')) {
-        updatedRequirementMap.bedrooms = 'studio';
-      }
-    }
-
-    if (!updatedRequirementMap.budget) {
-      const cityData = updatedRequirementMap.city 
-        ? Object.values(SUPPORTED_CITIES).find(c => c.name.toLowerCase() === (typeof updatedRequirementMap.city === 'string' ? updatedRequirementMap.city.toLowerCase() : ''))
-        : null;
-
-      if (cityData) {
-        const budgetRegex = new RegExp(`(\\d+(?:\\.\\d+)?)\\s*(${cityData.budgetUnit.toLowerCase()}|${cityData.currency.toLowerCase()})`, 'i');
-        const budgetMatch = input.match(budgetRegex);
-        
-        if (budgetMatch) {
-          const budgetValue = parseFloat(budgetMatch[1]);
-          if (cityData.budgetUnit === 'Lakh') {
-            updatedRequirementMap.budget = budgetValue * 100000;
-          } else if (cityData.budgetUnit === 'Crore') {
-            updatedRequirementMap.budget = budgetValue * 10000000;
-          } else if (cityData.budgetUnit === 'Million') {
-            updatedRequirementMap.budget = budgetValue * 1000000;
-          } else {
-            updatedRequirementMap.budget = budgetValue;
-          }
-        }
-      }
-    }
-
-    if (!updatedRequirementMap.purpose) {
-      if (inputLower.includes('personal') || inputLower.includes('live') || inputLower.includes('own use')) {
-        updatedRequirementMap.purpose = 'Personal Use';
-      } else if (inputLower.includes('invest') || inputLower.includes('rental') || inputLower.includes('return')) {
-        updatedRequirementMap.purpose = 'Investment';
-      } else if (inputLower.includes('commercial') || inputLower.includes('office') || inputLower.includes('business')) {
-        updatedRequirementMap.purpose = 'Commercial';
-      }
-    }
-
-    if (!updatedRequirementMap.status) {
-      if (inputLower.includes('ready') || inputLower.includes('move in')) {
-        updatedRequirementMap.status = 'Ready to Move';
-      } else if (inputLower.includes('under construction') || inputLower.includes('upcoming')) {
-        updatedRequirementMap.status = 'Under Construction';
-      }
+  if (!updatedRequirementMap.status || inputLower.includes('status')) {
+    if (inputLower.includes('ready') || inputLower.includes('move in')) {
+      updatedRequirementMap.status = 'Ready to Move';
+    } else if (inputLower.includes('under construction') || inputLower.includes('upcoming')) {
+      updatedRequirementMap.status = 'Under Construction';
     }
   }
 
@@ -325,7 +363,6 @@ if (possibleRecommendations.length > 0) {
   };
 }
 
-
 // Helper functions
 function isPositiveResponse(input: string): boolean {
   return /(like|good|interested|yes|yeah|yup|perfect|great)/.test(input);
@@ -357,19 +394,19 @@ interface Requirements {
   status?: string;
 }
 
-function getMissingFieldsPrompt(missingFields: string[], requirements: Requirements): string {
-  const prompts = {
-    city: "Which city are you looking to buy in? We operate in multiple locations including Gurgaon, Mumbai, Bangalore, and Dubai.",
-    purpose: "Are you buying for personal use, investment, or commercial purposes?",
-    budget: `What's your budget range for this property? (in ${requirements.budgetUnit || 'Lakh/Crore'})`,
-    bedrooms: "How many bedrooms are you looking for?",
-    type: "What type of property are you interested in? (Apartment, Villa, Plot, etc.)",
-    status: "Do you prefer ready-to-move properties or under-construction projects?"
-  };
+// function getMissingFieldsPrompt(missingFields: string[], requirements: Requirements): string {
+//   const prompts = {
+//     city: "Which city are you looking to buy in? We operate in multiple locations including Gurgaon, Mumbai, Bangalore, and Dubai.",
+//     purpose: "Are you buying for personal use, investment, or commercial purposes?",
+//     budget: `What's your budget range for this property? (in ${requirements.budgetUnit || 'Lakh/Crore'})`,
+//     bedrooms: "How many bedrooms are you looking for?",
+//     type: "What type of property are you interested in? (Apartment, Villa, Plot, etc.)",
+//     status: "Do you prefer ready-to-move properties or under-construction projects?"
+//   };
 
-  // Return prompt for the first missing field
-  return prompts[missingFields[0] as keyof typeof prompts] || "Could you provide more details about your requirements?";
-}
+//   // Return prompt for the first missing field
+//   return prompts[missingFields[0] as keyof typeof prompts] || "Could you provide more details about your requirements?";
+// }
 
 function getPropertyDetails(requirements: Requirements): string {
   const cityDetails = {

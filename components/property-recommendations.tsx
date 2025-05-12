@@ -3,12 +3,19 @@
 import { useState, useEffect } from "react"
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { ChevronLeft, ChevronRight, Info, Calendar, MessageSquare, Heart, Share2 } from "lucide-react"
+import { ChevronLeft, ChevronRight, Info, Calendar, MessageSquare, Heart, Share2, Clipboard, Mail, Twitter, Facebook, Linkedin } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { formatPrice } from "../lib/utils"
 import Image from "next/image"
 import { cn } from "@/lib/utils"
-
+import { toast } from "sonner"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { PropertyDetailsDialog } from "./propertyDetailsDialog"
 interface Property {
   name: string
   location: string
@@ -20,36 +27,121 @@ interface Property {
   status: string
   image?: string
   priceUnit: string
+  moreDetails: {
+      description: string;
+      amenities: string[];
+      floorPlans?: string[];
+      contact: string;
+      reraId: string;
+      possessionDate: string;
+    }
 }
 
 interface PropertyRecommendationsProps {
   properties: Array<Property>
 }
 
+declare global {
+  interface Window {
+    Calendly?: {
+      initPopupWidget: (options: { url: string }) => void;
+      closePopupWidget: () => void;
+    };
+  }
+}
+
 export default function PropertyRecommendations({ properties }: PropertyRecommendationsProps) {
   const [activeIndex, setActiveIndex] = useState(0)
   const [liked, setLiked] = useState<boolean[]>([])
   const [isAnimating, setIsAnimating] = useState(false)
+  const [selectedProperty, setSelectedProperty] = useState<Property | null>(null)
+  const [detailsOpen, setDetailsOpen] = useState(false)
 
   // Initialize liked state based on properties length
   useEffect(() => {
     setLiked(new Array(properties.length).fill(false))
   }, [properties.length])
-
+  const handleKnowMore = (property: Property) => {
+    setSelectedProperty(property)
+    setDetailsOpen(true)
+  }
   const nextProperty = () => {
     if (isAnimating) return
     setIsAnimating(true)
     setActiveIndex((prev) => (prev + 1) % properties.length)
     setTimeout(() => setIsAnimating(false), 300)
   }
-
+  
   const prevProperty = () => {
     if (isAnimating) return
     setIsAnimating(true)
     setActiveIndex((prev) => (prev - 1 + properties.length) % properties.length)
     setTimeout(() => setIsAnimating(false), 300)
   }
+  const generatePropertyDetails = (property: Property) => {
+    return `
+🏠 *${property.name}*
+📍 *Location:* ${property.location}
+💰 *Price:* ${formatPrice(property.price)} ${property.priceUnit}
+📐 *Size:* ${property.size} sq.ft
+🛏️ *Bedrooms:* ${property.bedrooms} BHK
+🏡 *Type:* ${property.type}
+🏷️ *Status:* ${property.status}
 
+✨ *Key Features:*
+${property.features.map(feat => `• ${feat}`).join('\n')}
+
+🔗 *View more details:* ${window.location.href}
+    `.trim()
+  }
+
+  const handleNativeShare = async (property: Property) => {
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: `${property.name} - Property Details`,
+          text: generatePropertyDetails(property),
+          url: window.location.href,
+        })
+      } else {
+        await handleCopyToClipboard(property)
+      }
+    } catch (err) {
+      console.error('Error sharing:', err)
+    }
+  }
+
+  const handleCopyToClipboard = async (property: Property) => {
+    try {
+      await navigator.clipboard.writeText(generatePropertyDetails(property))
+      toast.success("Property details copied to clipboard!", {
+        position: "top-center",
+        duration: 2000,
+      })
+    } catch (err) {
+      toast.error(`Failed to copy details - ${err}`, {
+        position: "top-center",
+        duration: 2000,
+      })
+    }
+  }
+
+  const shareOnPlatform = (platform: string, property: Property) => {
+    const details = generatePropertyDetails(property)
+    const encodedDetails = encodeURIComponent(details)
+    const encodedUrl = encodeURIComponent(window.location.href)
+
+    const platforms = {
+      whatsapp: `https://wa.me/?text=${encodedDetails}%0A%0A${encodedUrl}`,
+      twitter: `https://twitter.com/intent/tweet?text=${encodedDetails}&url=${encodedUrl}`,
+      facebook: `https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}&quote=${encodedDetails}`,
+      linkedin: `https://www.linkedin.com/shareArticle?mini=true&url=${encodedUrl}&title=${encodeURIComponent(property.name)}&summary=${encodedDetails}`,
+      email: `mailto:?subject=${encodeURIComponent(`Property: ${property.name}`)}&body=${encodedDetails}%0A%0A${encodedUrl}`
+    }
+
+    const link = platforms[platform as keyof typeof platforms];
+  if (link) window.open(link, "_blank");
+  }
   const toggleLike = (index: number) => {
     const newLiked = [...liked]
     newLiked[index] = !newLiked[index]
@@ -120,13 +212,48 @@ export default function PropertyRecommendations({ properties }: PropertyRecommen
                   )}
                 />
               </Button>
-              <Button
-                variant="outline"
-                size="icon"
-                className="h-8 w-8 rounded-full bg-white/90 hover:bg-white border-none"
-              >
-                <Share2 className="h-4 w-4 text-gray-600" />
-              </Button>
+              <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="outline"
+          size="icon"
+          className="h-8 w-8 rounded-full bg-white/90 hover:bg-white border-none"
+          aria-label="Share property details"
+        >
+          <Share2 className="h-4 w-4 text-gray-600" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-56">
+        <DropdownMenuItem onClick={() => handleNativeShare(property)}>
+          <Share2 className="mr-2 h-4 w-4" />
+          <span>Share via...</span>
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => handleCopyToClipboard(property)}>
+          <Clipboard className="mr-2 h-4 w-4" />
+          <span>Copy all details</span>
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => shareOnPlatform('whatsapp', property)}>
+          <MessageSquare className="mr-2 h-4 w-4" />
+          <span>WhatsApp</span>
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => shareOnPlatform('email', property)}>
+          <Mail className="mr-2 h-4 w-4" />
+          <span>Email</span>
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => shareOnPlatform('twitter', property)}>
+          <Twitter className="mr-2 h-4 w-4" />
+          <span>Twitter</span>
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => shareOnPlatform('facebook', property)}>
+          <Facebook className="mr-2 h-4 w-4" />
+          <span>Facebook</span>
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => shareOnPlatform('linkedin', property)}>
+          <Linkedin className="mr-2 h-4 w-4" />
+          <span>LinkedIn</span>
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
             </div>
           </div>
 
@@ -237,33 +364,54 @@ export default function PropertyRecommendations({ properties }: PropertyRecommen
           </div>
         </CardContent>
 
-        <CardFooter className="flex flex-col sm:flex-row justify-between gap-2 pt-2 pb-4">
-          <Button
-            variant="outline"
-            className="flex-1 border-gray-200 hover:bg-gray-50 hover:text-teal-700 hover:border-teal-200 transition-colors"
-            size="sm"
-          >
-            <Info className="h-4 w-4 mr-2" />
-            Know More
-          </Button>
-          <Button
-            variant="outline"
-            className="flex-1 border-gray-200 hover:bg-gray-50 hover:text-teal-700 hover:border-teal-200 transition-colors"
-            size="sm"
-          >
-            <MessageSquare className="h-4 w-4 mr-2" />
-            WhatsApp
-          </Button>
-          <Button
-            variant="default"
-            className="flex-1 bg-teal-600 hover:bg-teal-700 text-white transition-colors"
-            size="sm"
-          >
-            <Calendar className="h-4 w-4 mr-2" />
-            Schedule Visit
-          </Button>
-        </CardFooter>
+        <CardFooter className="grid grid-cols-2 lg:grid-cols-3 justify-between gap-2 pt-2 pb-4">
+  <Button
+    variant="outline"
+    className="flex-1 border-gray-200 hover:bg-gray-50 hover:text-teal-700 hover:border-teal-200 transition-colors"
+    size="sm"
+    onClick={() => handleKnowMore(property)}
+  >
+    <Info className="h-4 w-4 mr-2" />
+    Know More
+  </Button>
+
+  <a
+    href="https://wa.me/919876543210"
+    target="_blank"
+    rel="noopener noreferrer"
+    className="flex-1"
+  >
+    <Button
+      variant="outline"
+      className="w-full border-gray-200 hover:bg-gray-50 hover:text-teal-700 hover:border-teal-200 transition-colors"
+      size="sm"
+    >
+      <MessageSquare className="h-4 w-4 mr-2" />
+      WhatsApp
+    </Button>
+  </a>
+
+  <Button
+    variant="default"
+    className="col-span-2 lg:col-span-1 bg-teal-600 hover:bg-teal-700 text-white transition-colors"
+    size="sm"
+    onClick={() =>
+    window.Calendly?.initPopupWidget({ url: 'https://calendly.com/AkankshRakesh/property-visit' })
+  }
+  >
+    <Calendar className="h-4 w-4 mr-2" />
+    Schedule Visit
+  </Button>
+</CardFooter>
+
       </Card>
+       {selectedProperty && (
+        <PropertyDetailsDialog
+          property={selectedProperty}
+          open={detailsOpen}
+          onOpenChangeAction={setDetailsOpen}
+        />
+      )}
     </div>
   )
 }
