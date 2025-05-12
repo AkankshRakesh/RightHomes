@@ -1,7 +1,10 @@
 import { mockProperties } from "./mock-data";
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
-const genAI = new GoogleGenerativeAI("AIzaSyBAEJ4de54Z02ZOxBIwXYwoemidEElKcx4");
+if (!process.env.NEXT_PUBLIC_GEMINI) {
+  throw new Error("Environment variable NEXT_PUBLIC_GEMINI is not defined.");
+}
+const genAI = new GoogleGenerativeAI(process.env.NEXT_PUBLIC_GEMINI);
 const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
 interface ProcessResult {
