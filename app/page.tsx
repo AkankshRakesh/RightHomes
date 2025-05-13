@@ -5,7 +5,7 @@
 import type React from "react"
 
 import { useState } from "react"
-import { Mic, MicOff, Send } from "lucide-react"
+import { Mic, Send } from "lucide-react"
 import PropertyRecommendations from "../components/property-recommendations"
 import ChatMessage from "../components/chat-message"
 import RequirementMap from "../components/requirement-map"
@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { mockProperties } from "../lib/mock-data"
 import { processUserInput } from "../lib/chat-logic"
+import VoiceOverlay from "../components/voice-overlay"
 
 export default function Home() {
   const [messages, setMessages] = useState<Array<{ role: string; content: string }>>([
@@ -25,33 +26,33 @@ export default function Home() {
     },
   ])
   const [input, setInput] = useState("")
-  const [isListening, setIsListening] = useState(false)
+  const [isVoiceOverlayOpen, setIsVoiceOverlayOpen] = useState(false)
   interface RequirementMap {
-    city?: string;
-    budget?: number;
-    bedrooms?: number;
-    [key: string]: string | number | undefined; // Add index signature
+    city?: string
+    budget?: number
+    bedrooms?: number
+    [key: string]: string | number | undefined // Add index signature
   }
 
   const [requirementMap, setRequirementMap] = useState<RequirementMap>({})
   interface Property {
     name: string
-  location: string
-  price: number
-  type: string
-  size: number
-  bedrooms: number
-  features: string[]
-  status: string
-  image?: string
-  priceUnit: string
-  moreDetails: {
-      description: string;
-      amenities: string[];
-      floorPlans?: string[];
-      contact: string;
-      reraId: string;
-      possessionDate: string;
+    location: string
+    price: number
+    type: string
+    size: number
+    bedrooms: number
+    features: string[]
+    status: string
+    image?: string
+    priceUnit: string
+    moreDetails: {
+      description: string
+      amenities: string[]
+      floorPlans?: string[]
+      contact: string
+      reraId: string
+      possessionDate: string
     }
   }
 
@@ -106,44 +107,15 @@ export default function Home() {
   }
 
   const toggleListening = () => {
-    if (!isListening) {
-      // Start speech recognition
-      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
-      if (SpeechRecognition) {
-        const recognition = new SpeechRecognition()
-        recognition.continuous = false
-        recognition.lang = "en-US"
+    setIsVoiceOverlayOpen((prev) => !prev)
+  }
 
-        recognition.onstart = () => {
-          setIsListening(true)
-        }
-
-        recognition.onresult = (event: SpeechRecognitionEvent) => {
-          const transcript = event.results[0][0].transcript
-          setInput(transcript)
-        }
-
-        recognition.onend = () => {
-          setIsListening(false)
-          // Auto-send after voice input
-          setTimeout(() => {
-            handleSendMessage()
-          }, 500)
-        }
-
-        recognition.start()
-      } else {
-        alert("Speech recognition is not supported in your browser.")
-      }
-    } else {
-      // Stop speech recognition
-      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
-      if (SpeechRecognition) {
-        const recognition = new SpeechRecognition()
-        recognition.stop()
-        setIsListening(false)
-      }
-    }
+  const handleVoiceTranscript = (transcript: string) => {
+    setInput(transcript)
+    // Auto-send after voice input
+    setTimeout(() => {
+      handleSendMessage()
+    }, 100)
   }
 
   const handleSuggestionClick = (suggestion: string) => {
@@ -194,8 +166,8 @@ export default function Home() {
               placeholder="Type your message..."
               className="flex-1"
             />
-            <Button variant="outline" size="icon" onClick={toggleListening} className={isListening ? "bg-red-100" : ""}>
-              {isListening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+            <Button variant="outline" size="icon" onClick={toggleListening}>
+              <Mic className="h-4 w-4" />
             </Button>
             <Button size="icon" onClick={handleSendMessage}>
               <Send className="h-4 w-4" />
@@ -224,6 +196,11 @@ export default function Home() {
           </div>
         )}
       </div>
+      <VoiceOverlay
+        isOpen={isVoiceOverlayOpen}
+        onCloseAction={() => setIsVoiceOverlayOpen(false)}
+        onTranscriptAction={handleVoiceTranscript}
+      />
     </main>
   )
 }
