@@ -78,3 +78,12 @@ NEXT_PUBLIC_GEMINI="xxxx"
 ```bash
 npm run dev
 ```
+
+---
+
+## 🖼️ Site Images
+![image](https://github.com/AkankshRakesh/RightHomes/blob/master/public/siteImages/1.png?raw=true)
+![image](https://github.com/AkankshRakesh/RightHomes/blob/master/public/siteImages/2.png?raw=true)
+![image](https://github.com/AkankshRakesh/RightHomes/blob/master/public/siteImages/3.png?raw=true)
+![image](https://github.com/AkankshRakesh/RightHomes/blob/master/public/siteImages/4.png?raw=true)
+![image](https://github.com/AkankshRakesh/RightHomes/blob/master/public/siteImages/5.png?raw=true)
